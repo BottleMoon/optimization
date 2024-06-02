@@ -32,20 +32,169 @@ from sangga
 ```
 
 ```sql
-insert into midium_classification_name(name, big_classification_name_id)
-select distinct 상권업종중분류명,(SELECT id FROM big_classification_name WHERE name = 상권업종대분류명)
+insert into midium_classification_name(name)
+select distinct 상권업종중분류명
 from sangga
 ```
 
 ```sql
-insert into small_classification_name(name, midium_classification_name_id)
-select distinct 상권업종소분류명,(SELECT id FROM midium_classification_name WHERE name = 상권업종중분류명)
+insert into small_classification_name(name)
+select distinct 상권업종소분류명
 from sangga
 ```
 
-## 최적화
+```sql
+insert into standard_industrial_classification_name(name)
+select distinct 표준산업분류명
+from sangga_origin
+```
+
+Sangga Entity는 다음과 같이 설정했습니다.
+
+```java
+@Entity
+@Getter
+public class Sangga {
+    @Id
+    private Long id;
+
+    private String name;
+
+    //지번 주소
+    private String jibun_address;
+
+    //도로명주소
+    private String doro_address;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    private BigClassificationName bigClassificationName;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    private MediumClassificationName mediumClassificationName;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    private SmallClassificationName smallClassificationName;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    private StandardIndustrialClassificationName standardIndustrialClassificationName;
+}
+```
 
 ## TODO
-- [ ] JPA 최적화
-- [ ] DB 인덱싱
-- [ ] 캐싱
+
+- [x]  JPA 최적화
+- [ ]  DB 인덱싱
+- [ ]  캐싱
+
+## 쿼리 최적화
+
+1. N+1 문제가 생기는 버전
+2. fetch join을 통해 해결한 버전
+
+두 가지 버전으로 성능을 측정했습니다.
+
+### 3000건 조회
+
+### V1 - N+1
+
+FetchType.LAZY로 설정해서 N+1 문제로 인해 500건의 쿼리가 추가적으로 나갔습니다.
+
+DB가 같은 네트워크 상에 있을 때
+
+![Screenshot 2024-05-30 at 1 06 38 PM](https://github.com/BottleMoon/optimization/assets/46589339/e2ca974c-75ba-4a80-8b0c-f81fefb5114c)
+
+DB가 다른 네트워크에 있을 때
+
+![Screenshot 2024-05-30 at 1 09 05 PM](https://github.com/BottleMoon/optimization/assets/46589339/9edecbad-b48c-4e90-af5b-6489ac6813b8)
+
+DB가 다른 네트워크에 있을 때 쿼리 수가 많아서 네트워크 부하가 증가해 성능이 감소한 것을 확인했습니다.
+
+### V2 - fetch join
+
+@Query 어노테이션을 사용하여 JPQL로 fetch join를 했습니다. 쿼리 수는 본 쿼리, count쿼리 각 하나씩으로 2개의 쿼리가 나갔습니다. 
+
+```java
+@Query("select s" +
+            " from Sangga s" +
+            " join fetch s.bigClassificationName" +
+            " join fetch s.mediumClassificationName" +
+            " join fetch s.smallClassificationName" +
+            " join fetch s.standardIndustrialClassificationName")
+Page<Sangga> findAllPageV2(Pageable pageable);
+```
+
+DB가 같은 네트워크 상에 있을 때
+
+![Screenshot 2024-05-30 at 1 07 08 PM](https://github.com/BottleMoon/optimization/assets/46589339/700a8e67-875d-4f7f-9463-21947ff19448)
+
+DB가 다른 네트워크에 있을 때
+
+![Screenshot 2024-05-30 at 1 10 08 PM](https://github.com/BottleMoon/optimization/assets/46589339/2e97cc4b-32a7-43cc-8e33-6c4228fa0805)
+
+쿼리수는 줄었지만 처리 속도는 크게 증가했는데, count 쿼리가 join이 들어간 상태로 나가서 오버헤드가 발생한 것으로 보입니다.
+
+```sql
+select count(s1_0.id) 
+from sangga s1_0 
+	join big_classification_name bcn1_0 on bcn1_0.id=s1_0.big_classification_name_id 
+	join medium_classification_name mcn1_0 on mcn1_0.id=s1_0.medium_classification_name_id 
+	join small_classification_name scn1_0 on scn1_0.id=s1_0.small_classification_name_id 
+	join standard_industrial_classification_name sicn1_0 on sicn1_0.id=s1_0.standard_industrial_classification_name_idz
+```
+
+### V3 - fetch join (count 쿼리 최적화)
+
+V2 버전에서 count 쿼리로 인한 문제를 최적화하기 위해 QueryDSL을 사용하여 conunt 쿼리를 따로 빼내어 sangga 테이블만 count를 실행해서 진행했습니다. 쿼리 수는 본 쿼리, count쿼리 각 하나씩으로 2개의 쿼리가 나갔습니다.
+
+```java
+public Page<Sangga> findAllPageV3(Pageable pageable) {
+    List<Sangga> content = queryFactory
+            .select(sangga)
+            .from(sangga)
+            .join(sangga.bigClassificationName).fetchJoin()
+            .join(sangga.mediumClassificationName).fetchJoin()
+            .join(sangga.smallClassificationName).fetchJoin()
+            .join(sangga.standardIndustrialClassificationName).fetchJoin()
+            .limit(pageable.getPageSize())
+            .fetch();
+
+    JPAQuery<Long> countQuery = queryFactory
+            .select(sangga.count())
+            .from(sangga);
+
+    return PageableExecutionUtils.getPage(content,pageable,countQuery::fetchOne);
+}
+```
+
+DB가 같은 네트워크 상에 있을 때
+
+![Screenshot 2024-05-30 at 1 08 10 PM](https://github.com/BottleMoon/optimization/assets/46589339/eefe5c09-699c-44ff-955c-90376fb29dfa)
+
+DB가 다른 네트워크에 있을 때
+
+![Screenshot 2024-05-30 at 1 09 31 PM](https://github.com/BottleMoon/optimization/assets/46589339/515ef670-f9c0-42ce-bc07-e8e61825beec)
+
+쿼리 수가 적어서 DB가 같은 네트워크에 있는 것과 다른 네트워크에 있는 것의 차이가 거의 없는 것을 확인할 수 있었습니다.
+
+### 부하 테스트
+
+V1
+
+<img width="1212" alt="Screenshot 2024-06-02 at 3 05 57 PM" src="https://github.com/BottleMoon/optimization/assets/46589339/9210c7c4-95f0-4164-904e-4e42c011578b">
+
+V3
+
+<img width="1217" alt="Screenshot 2024-06-02 at 3 08 03 PM" src="https://github.com/BottleMoon/optimization/assets/46589339/39b76b28-d254-4edc-a2b9-062e2ba84cad">
+
+ngrinder 부하 테스트 결과
+- V1: HikariPool의 timeout error 발생, TPS 0.8, Error 80%.
+- V3: TPS 8.8, Error 0개.
+
+단순히 어플리케이션에서 stopwatch로 성능을 측정한 것 보다 더 많은 차이를 볼 수 있었습니다.
+
+V1에선 HikariPool의 timeout error가 발생하면서 error가 80%이고 TPS가 0.8인 좋지 않은 성능을 보여줬습니다. N+1로 인해 DB에 많은 부하가 걸린 것으로 보입니다.
+
+그에 반해 V3의 부하 테스트에선 약 11배의 성능인 8.8TPS가 나왔고 Error는 0개로 많은 차이를 보여줬습니다.
+
+이번 실험에선 N+1을 fetch join으로 쿼리 수를 최적화하고, count 쿼리도 따로 분리하여 최적화를 해보았습니다. N+1문제는 네트워크 부하, DB의 부하 등 추가적인 오버헤드를 발생할 수 있으므로 무조건적으로 해결해야하는 문제입니다. 
+하지만 실무에선 대규모 데이터를 List query할 때에 SQL을 추상화하여 접근하는 것은 좋지 않다고 하니 SQL을 추상화하지 않는 스택에서 접근하는 것이 좋겠습니다.
