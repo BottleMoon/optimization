@@ -10,4 +10,5 @@ public class SanggaDto {
     private String bigClassificationName;
     private String mediumClassificationName;
     private String smallClassificationName;
+    private String standardIndustrialClassificationName;
 }

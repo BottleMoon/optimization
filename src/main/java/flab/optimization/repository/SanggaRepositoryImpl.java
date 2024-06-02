@@ -20,14 +20,15 @@ public class SanggaRepositoryImpl implements SanggaRepositoryCustom{
     }
 
     @Override
-    public Page<Sangga> findSanggaByNameContainingV3(String name, Pageable pageable) {
+    public Page<Sangga> findAllPageV3(Pageable pageable) {
         List<Sangga> content = queryFactory
                 .select(sangga)
                 .from(sangga)
                 .join(sangga.bigClassificationName).fetchJoin()
                 .join(sangga.mediumClassificationName).fetchJoin()
                 .join(sangga.smallClassificationName).fetchJoin()
-                .where(sangga.name.contains(name))
+                .join(sangga.standardIndustrialClassificationName).fetchJoin()
+                .limit(pageable.getPageSize())
                 .fetch();
 
         JPAQuery<Long> countQuery = queryFactory

@@ -1,11 +1,12 @@
 package flab.optimization.service;
 
+import flab.optimization.aop.Timed;
 import flab.optimization.dto.SanggaDto;
 import flab.optimization.entity.Sangga;
 import flab.optimization.repository.SanggaRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StopWatch;
 
@@ -19,31 +20,35 @@ public class SanggaService {
         this.sanggaRepository = sanggaRepository;
     }
 
-    public Page<SanggaDto> searchByNameV1(String name, Pageable pageable) {
-        stopWatch.start();
-        Page<SanggaDto> sanggaByNameContaining = sanggaRepository.findSanggaByNameContaining(name, pageable).map(this::entityToDto);
-        stopWatch.stop();
-        log.info(stopWatch.prettyPrint());
+    @Timed
+    public Page<SanggaDto> findAllPageV1() {
+        Page<SanggaDto> sanggaByNameContaining =
+                sanggaRepository.findAll(getPageable()).map(this::SanggaToDto);
+        log.info("paging(3000건) V1");
         return sanggaByNameContaining;
     }
 
-    public Page<SanggaDto> searchByNameV2(String name, Pageable pageable) {
-        stopWatch.start();
-        Page<SanggaDto> sanggaByNameContaining = sanggaRepository.findSanggaByNameContainingV2(name, pageable).map(this::entityToDto);
-        stopWatch.stop();
-        log.info(stopWatch.prettyPrint());
+    @Timed
+    public Page<SanggaDto> findAllPageV2() {
+        Page<SanggaDto> sanggaByNameContaining =
+                sanggaRepository.findAllPageV2(getPageable()).map(this::SanggaToDto);
+        log.info("paging(3000건) V2");
         return sanggaByNameContaining;
     }
 
-    public Page<SanggaDto> searchByNameV3(String name, Pageable pageable) {
-        stopWatch.start();
-        Page<SanggaDto> sanggaByNameContaining = sanggaRepository.findSanggaByNameContainingV3(name, pageable).map(this::entityToDto);
-        stopWatch.stop();
-        log.info(stopWatch.prettyPrint());
+    @Timed
+    public Page<SanggaDto> findAllPageV3() {
+        Page<SanggaDto> sanggaByNameContaining =
+                sanggaRepository.findAllPageV3(getPageable()).map(this::SanggaToDto);
+        log.info("paging(3000건) V3");
         return sanggaByNameContaining;
     }
 
-    private SanggaDto entityToDto(Sangga sangga) {
+    private static PageRequest getPageable() {
+        return PageRequest.of(0, 3000);
+    }
+
+    private SanggaDto SanggaToDto(Sangga sangga) {
         SanggaDto sanggaDto = new SanggaDto();
         sanggaDto.setName(sangga.getName());
         sanggaDto.setJibun_address(sangga.getJibun_address());
@@ -51,6 +56,7 @@ public class SanggaService {
         sanggaDto.setBigClassificationName(sangga.getBigClassificationName().getName());
         sanggaDto.setMediumClassificationName(sangga.getMediumClassificationName().getName());
         sanggaDto.setSmallClassificationName(sangga.getSmallClassificationName().getName());
+        sanggaDto.setStandardIndustrialClassificationName(sangga.getStandardIndustrialClassificationName().getName());
         return sanggaDto;
     }
 }

@@ -25,4 +25,7 @@ public class Sangga {
 
     @ManyToOne(fetch = FetchType.LAZY)
     private SmallClassificationName smallClassificationName;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    private StandardIndustrialClassificationName standardIndustrialClassificationName;
 }

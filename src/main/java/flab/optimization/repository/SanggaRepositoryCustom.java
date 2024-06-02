@@ -6,5 +6,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 public interface SanggaRepositoryCustom {
-    public Page<Sangga> findSanggaByNameContainingV3(String name, Pageable pageable);
+    public Page<Sangga> findAllPageV3(Pageable pageable);
+
 }
